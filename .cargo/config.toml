@@ -1,0 +1,9 @@
+[unstable]
+build-std-features = ["compiler-builtins-mem"]
+build-std = ["core", "compiler_builtins"]
+
+[target.thumbv8m.main-none-eabihf]
+runner = "picotool load -u -v -x -t elf"
+
+[build]
+target = "thumbv8m.main-none-eabihf"

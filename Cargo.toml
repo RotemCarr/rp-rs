@@ -1,0 +1,13 @@
+[package]
+name = "pico_os"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cortex-m-rt = "0.7.5"
+
+[features]
+pico_2w = []
+
+[lib]
+test = false
