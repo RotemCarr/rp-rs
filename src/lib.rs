@@ -68,6 +68,8 @@ pub fn nop_loop() -> ! {
     }
 }
 
+pub trait Valid {}
+
 pub struct UartWriter;
 
 impl Write for UartWriter {
