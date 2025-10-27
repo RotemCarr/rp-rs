@@ -17,7 +17,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Setup
-      run: apt install arm-none-eabi-gcc
+      run: sudo apt install arm-none-eabi-gcc
     - name: Build
       run: cargo build --verbose
     # - name: Run tests
