@@ -1,0 +1,31 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: build docker image
+        run: docker build -t pico_os:0.1.0 .
+
+      - name: run docker image
+        run: docker run --rm -t pico_os:0.1.0
+
+    # - name: Run tests
+    #   run: cargo test --verbose
+    # Might add Hardware-In-The-Loop later
