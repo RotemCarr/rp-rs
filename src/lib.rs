@@ -68,6 +68,8 @@ pub fn nop_loop() -> ! {
     }
 }
 
+pub trait Valid {}
+
 pub struct UartWriter;
 
 impl Write for UartWriter {
@@ -125,7 +127,7 @@ pub unsafe fn reset_peripherals() {
 /// `info`: information about the panic
 #[panic_handler]
 unsafe fn panic(info: &PanicInfo) -> ! {
-    let led: Pin = Pin::new(2);
+    let led = Pin::<2>::new();
     led.set();
 
     println!("{}", info);
