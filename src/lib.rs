@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+pub mod spinlocks;
 pub mod clocks;
 pub mod timers;
 pub mod gpio;
