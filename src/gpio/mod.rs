@@ -1,5 +1,5 @@
 /// GPIO module
-mod regs;
+pub mod regs;
 
 use crate::gpio::regs::*;
 use crate::{bit, reg_read, reg_write, ATOMIC_CLEAR, ATOMIC_SET, RESETS_RESET, RESETS_RESET_DONE};
