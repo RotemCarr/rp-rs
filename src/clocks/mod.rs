@@ -121,3 +121,26 @@ pub unsafe fn init_pll() {
     let pll_sys_hz = pll_sys_out_hz();
     clock_set_reported_hz(Clock::Sys, pll_sys_hz);
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::clocks::{clock_get_hz, pll_sys_out_hz, XOSC_HZ};
+    use crate::clocks::Clock::{Ref, Sys};
+    use crate::println;
+
+    #[test_case]
+    fn test_reported_clock_ref_freq() {
+        let actual_freq = XOSC_HZ;
+        let reported_freq = clock_get_hz(Ref);
+        println!("Actual Frequency: {}\nReported Frequency: {}", actual_freq, reported_freq);
+        assert_eq!(reported_freq, actual_freq);
+    }
+
+    #[test_case]
+    fn test_reported_clock_sys_freq() {
+        let measured_freq = unsafe { pll_sys_out_hz() };
+        let reported_freq = clock_get_hz(Sys);
+        println!("Measured Frequency: {}\nReported Frequency: {}", measured_freq, reported_freq);
+        assert_eq!(reported_freq, measured_freq);
+    }
+}
