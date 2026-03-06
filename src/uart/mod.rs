@@ -3,9 +3,11 @@
 mod regs;
 pub mod interrupts;
 
-use regs::*;
-use crate::{register, ATOMIC_CLEAR};
+use crate::clocks::{clock_get_hz};
 use crate::gpio::{gpio_ctrl_offset, gpio_pad_offset};
+use crate::{register, ATOMIC_CLEAR};
+use regs::*;
+use crate::clocks::Clock::Ref;
 
 // -------- helpers ----------
 
@@ -33,7 +35,7 @@ fn get_clk_peri_hz() -> usize {
         let auxsrc = (ctrl >> 5) & 0x7; // AUXSRC
 
         // set AUXSRC to XOSC (0x4), 12 MHz:
-        let base = if auxsrc == 0x4 { 12_000_000 } else { 0 }; // known path
+        let base = if auxsrc == 0x4 { clock_get_hz(Ref) } else { 0 }; // known path
         let div = core::ptr::read_volatile(register(CLOCKS_BASE + CLK_PERI_DIV_OFFSET));
         let int_div = (div >> 16) & 0x3; // INT bits [17:16]
         let int_div = if int_div == 0 { 1 } else { int_div }; // 0 means max+1; we won’t use it
@@ -175,7 +177,7 @@ pub fn getc() -> char {
     }
 }
 
-/// Non-blocking get_char: returns Option<u8>
+/// Non-blocking get_char: returns `Option<u8>`
 /// - Some(byte) if a character is ready
 /// - None if FIFO empty
 pub fn getc_nonblocking() -> Option<u8> {
@@ -216,5 +218,19 @@ pub fn uart_enable_fifo(enabled: bool) {
         }
 
         core::ptr::write_volatile(lcr_h_addr, lcr_h_val);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::putc;
+    use super::puts;
+    
+    #[test_case]
+    fn test_uart_put_char() {
+        putc(b'A');
+
+        // Teardown
+        puts("\r\n");
     }
 }
