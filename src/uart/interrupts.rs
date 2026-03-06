@@ -1,12 +1,15 @@
-/// UART Interrupt controller
+//! UART Interrupt controller
 
 use crate::uart::regs::*;
 
-pub unsafe fn uart_handle_rx_irq() {
+/// a default interrupt handler for the UART stack
+pub fn uart_handle_rx_irq() {
     // Drain RX FIFO
-    while (core::ptr::read_volatile((UART0_BASE + UARTFR_OFFSET) as *const usize) & UARTFR_RXFE) == 0 {
-        let ch = core::ptr::read_volatile((UART0_BASE + UARTDR_OFFSET) as *const u32) as u8;
-        let _ = ch;
+    unsafe {
+        while (core::ptr::read_volatile((UART0_BASE + UARTFR_OFFSET) as *const usize) & UARTFR_RXFE) == 0 {
+            let ch = core::ptr::read_volatile((UART0_BASE + UARTDR_OFFSET) as *const u32) as u8;
+            let _ = ch;
+        }
     }
 }
 

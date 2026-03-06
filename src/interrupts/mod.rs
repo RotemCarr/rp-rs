@@ -1,4 +1,4 @@
-/// Interrupts module
+//! Interrupts module
 
 mod regs;
 
@@ -173,6 +173,11 @@ pub fn vtor_read() -> usize {
 /// - Secure vs. non-secure PPB
 /// - Required alignment masking
 /// - Data/instruction barriers
+///
+/// # Safety
+///
+/// This function changes the IVT pointer to an arbitrary address, 
+/// if the address is not valid, CPU will irrecoverably fault!
 #[inline(always)]
 pub unsafe fn vtor_write(addr: u32) {
     let base = if is_secure() {
@@ -190,29 +195,32 @@ pub unsafe fn vtor_write(addr: u32) {
 /// Set (install) an interrupt handler at runtime.
 ///
 /// `irq_num` = hardware IRQ number (0 = timer, 33 = UART0, etc.)
-pub fn set_irq_handler(irq: Interrupt, handler: fn()) {
+///
+/// # Safety
+///
+/// This function directly edits the interrupt vector table in ram, might cause
+/// irrecoverable faults!
+pub unsafe fn set_irq_handler(irq: Interrupt, handler: fn()) {
     let irq_num = interrupt_num(irq);
     let index = VTABLE_FIRST_IRQ + irq_num;
+    RAM_VECTOR_TABLE[index] = handler as *const () as u32;
 
-    unsafe {
-        RAM_VECTOR_TABLE[index] = handler as *const () as u32;
-
-        // switch to the RAM table
-        let table_addr = &raw const RAM_VECTOR_TABLE as *const _ as u32;
-        vtor_write(table_addr);
-    }
-
+    // switch to the RAM table
+    let table_addr = &raw const RAM_VECTOR_TABLE as *const _ as u32;
+    vtor_write(table_addr);
 }
 
 /// Copy an existing flash vector table into RAM (for dynamic updates)
-pub unsafe fn copy_vector_table_to_ram() {
+pub fn copy_vector_table_to_ram() {
     const LEN: usize = size_of::<[u32; 96]>() / size_of::<u32>();
     let flash_vtable = FLASH_BASE as *const u32;
-    let ram_vtable = core::ptr::addr_of!(RAM_VECTOR_TABLE) as *mut u32;
+    unsafe {
+        let ram_vtable = core::ptr::addr_of!(RAM_VECTOR_TABLE) as *mut u32;
 
-    for i in 0..LEN {
-        let value = core::ptr::read_volatile(flash_vtable.add(i));
-        core::ptr::write_volatile(ram_vtable.add(i), value);
+        for i in 0..LEN {
+            let value = core::ptr::read_volatile(flash_vtable.add(i));
+            core::ptr::write_volatile(ram_vtable.add(i), value);
+        }
     }
 }
 

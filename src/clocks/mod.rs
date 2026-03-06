@@ -31,8 +31,9 @@ pub fn clock_set_reported_hz(clock: Clock, hz: usize) {
     CONFIGURED_FREQ[clock as usize].store(hz, Ordering::Relaxed)
 }
 
+/// Measure the PLL system clock in Hz
 #[inline(always)]
-pub unsafe fn pll_sys_out_hz() -> usize {
+pub fn pll_sys_out_hz() -> usize {
     // postdiv1 bits [18:16], postdiv2 bits [14:12]
     let fbdiv = reg_read(PLL_SYS_FBDIV_INT) & 0x0fff;
 

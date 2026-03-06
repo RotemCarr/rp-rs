@@ -23,14 +23,13 @@ impl<const N: usize> Spinlock<N>
 where
     Spinlock<N>: Valid,
 {
+    /// Try to claim the spinlock
     pub fn try_claim() -> Option<Self> {
-        unsafe {
-            let claimed: usize = reg_read(SIO_BASE + spinlock_offset(N));
-            if claimed > 0 {
-                Some(Self(core::marker::PhantomData))
-            } else {
-                None
-            }
+        let claimed: usize = reg_read(SIO_BASE + spinlock_offset(N));
+        if claimed > 0 {
+            Some(Self(core::marker::PhantomData))
+        } else {
+            None
         }
     }
     
@@ -49,6 +48,7 @@ impl<const N: usize> Drop for Spinlock<N>
 where
     Spinlock<N>: Valid
 {
+    /// Release the lock if it goes out of scope
     fn drop(&mut self) {
         unsafe { Self::release() }
     }

@@ -28,7 +28,7 @@ fn main() -> ! {
         init();
         uart::uart_init(115200);
 
-        let led = Pin::<25>::new();
+        let led = Pin::<25>::take();
         println!("Hello, World!");
         println!("Type a character: ");
 
@@ -45,5 +45,42 @@ fn main() -> ! {
             led.clear();
             wait_ms(500);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pico_os::{bit, print, println};
+    use pico_os::uart::{putc, puts};
+
+    #[test_case]
+    fn test_bit_macro() {
+        assert_eq!(bit(3), 0b1000);
+        assert_eq!(bit(0), 1);
+        assert_eq!(bit(3), 0b1000);
+        assert_eq!(bit(31), 0x8000_0000);
+        assert_ne!(bit(7), 0x0001);
+        assert_ne!(bit(2), 10000)
+    }
+
+    #[test_case]
+    fn test_uart_put_char() {
+        putc(b'A');
+
+        // Teardown
+        puts("\r\n");
+    }
+
+    #[test_case]
+    fn test_print() {
+        print!("Test print...");
+
+        // Teardown
+        puts("\r\n");
+    }
+
+    #[test_case]
+    fn test_println() {
+        println!("Test println...");
     }
 }

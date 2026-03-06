@@ -1,4 +1,4 @@
-/// Register addresses for the UART module
+//! Register addresses for the UART module
 
 // Base UART addresses
 pub const CLOCKS_BASE:     usize = 0x4001_0000;  // CLOCKS base

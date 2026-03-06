@@ -1,4 +1,4 @@
-/// Register addresses for the Interrupts module
+//! Register addresses for the Interrupts module
 
 // Vector tables
 pub const FLASH_BASE: usize = 0x10000000;
