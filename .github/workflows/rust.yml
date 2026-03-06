@@ -20,11 +20,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: build docker image
-        run: docker build -t pico_os:0.1.0 .
+      - name: Build docker image
+        run: docker build -t rp-prod .
 
-      - name: run docker image
-        run: docker run --rm -t pico_os:0.1.0
+      - name: Lint code
+        run: docker run --rm -t rp-prod cargo clippy --release -- -D warnings
+
+      - name: Build for production
+        run: docker run --rm -t rp-prod cargo build --release
 
     # - name: Run tests
     #   run: cargo test --verbose
