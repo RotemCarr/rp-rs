@@ -1,5 +1,8 @@
 #![no_std]
 #![no_main]
+#![feature(custom_test_frameworks)]
+#![test_runner(crate::test_runner)]
+#![reexport_test_harness_main = "test_main"]
 
 pub mod spinlocks;
 pub mod clocks;
@@ -11,11 +14,13 @@ pub mod interrupts;
 use core::panic::PanicInfo;
 use core::{fmt, ptr};
 use core::fmt::Write;
-
 use crate::clocks::{configure_clk_ref, configure_clk_sys, init_pll, init_xosc};
 use crate::gpio::Pin;
 use crate::timers::start_timers;
 use crate::interrupts::copy_vector_table_to_ram;
+
+#[cfg(test)]
+use cortex_m_rt::entry;
 
 // Atomic register operations offsets
 pub const ATOMIC_XOR: usize = 0x1000;
@@ -63,9 +68,7 @@ pub unsafe fn reg_read(addr: usize) -> usize {
 #[inline(always)]
 pub fn nop_loop() -> ! {
     loop {
-        unsafe {
-            core::arch::asm!("nop");
-        }
+        core::hint::spin_loop();
     }
 }
 
@@ -157,6 +160,19 @@ pub fn init() {
     }
 }
 
+#[cfg(test)]
+#[entry]
+fn main() -> ! {
+    unsafe {
+        init();
+        uart::uart_init(115200);
+
+        test_main();
+
+        loop {}
+    }
+}
+
 pub trait Testable {
     fn run(&self) -> ();
 }
@@ -179,4 +195,34 @@ pub fn test_runner(tests: &[&dyn Testable]) {
         test.run();
     }
     println!("\x1b[1;32mDone!\x1b[0m")
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::{bit, print, println};
+    use super::uart::{puts};
+
+    #[test_case]
+    fn test_bit_macro() {
+        assert_eq!(bit(3), 0b1000);
+        assert_eq!(bit(0), 1);
+        assert_eq!(bit(3), 0b1000);
+        assert_eq!(bit(31), 0x8000_0000);
+        assert_ne!(bit(7), 0x0001);
+        assert_ne!(bit(2), 10000)
+    }
+
+    #[test_case]
+    fn test_print_macro() {
+        print!("Test print...");
+
+        // Teardown
+        puts("\r\n");
+    }
+
+    #[test_case]
+    fn test_println_macro() {
+        println!("Test println...");
+    }
 }
