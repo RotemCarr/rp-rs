@@ -1,4 +1,4 @@
-/// Register addresses for the GPIO module
+//! Register addresses for the GPIO module
 
 // Pads Registers
 pub const IO_BANK0_BASE:   usize = 0x4002_8000;

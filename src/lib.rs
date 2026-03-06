@@ -52,16 +52,20 @@ pub fn register(addr: usize) -> *mut usize { addr as *mut usize }
 /// `addr`: register's memory address
 /// `value`: value to write to register
 #[inline(always)]
-pub unsafe fn reg_write(addr: usize, val: usize) {
-    ptr::write_volatile(addr as *mut usize, val);
+pub fn reg_write(addr: usize, val: usize) {
+    unsafe {
+        ptr::write_volatile(addr as *mut usize, val);
+    }
 }
 
 /// Reads from a register given its memory address
 ///
 /// `addr`: register's memory address
 #[inline(always)]
-pub unsafe fn reg_read(addr: usize) -> usize {
-    ptr::read_volatile(addr as *const usize)
+pub fn reg_read(addr: usize) -> usize {
+    unsafe {
+        ptr::read_volatile(addr as *const usize)
+    }
 }
 
 /// Busy wait forever, an explicit wrapper around loop {}
@@ -121,7 +125,7 @@ macro_rules! println {
 
 
 /// Resets the IO banks and pads
-pub unsafe fn reset_peripherals() {
+pub fn reset_peripherals() {
     reg_write(RESETS_RESET + ATOMIC_CLEAR, bit(6) | bit(9));
     while (reg_read(RESETS_RESET_DONE) & (bit(6) | bit(9))) != (bit(6) | bit(9)) {}
 }
@@ -131,7 +135,7 @@ pub unsafe fn reset_peripherals() {
 /// `info`: information about the panic
 #[panic_handler]
 unsafe fn panic(info: &PanicInfo) -> ! {
-    let led = Pin::<2>::new();
+    let led = Pin::<2>::take();
     led.set();
 
     println!("{}", info);

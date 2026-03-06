@@ -1,4 +1,4 @@
-/// Register addresses for the Clocks module
+//! Register addresses for the Clocks module
 
 // XOSC Registers
 pub const XOSC_BASE:    usize = 0x40048000;

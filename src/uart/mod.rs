@@ -1,4 +1,4 @@
-/// Uart module
+//! Uart module
 
 mod regs;
 pub mod interrupts;

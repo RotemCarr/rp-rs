@@ -1,4 +1,4 @@
-/// Register addresses for the Timers module
+//! Register addresses for the Timers module
 
 // Timer0 Control Registers
 pub const TIMER0_BASE:     usize = 0x400b0000;
