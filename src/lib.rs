@@ -10,6 +10,7 @@ pub mod timers;
 pub mod gpio;
 pub mod uart;
 pub mod interrupts;
+pub mod peripherals;
 
 use core::panic::PanicInfo;
 use core::{fmt, ptr};

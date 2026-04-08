@@ -145,3 +145,9 @@ mod tests {
         assert_eq!(reported_freq, measured_freq);
     }
 }
+
+// gpio/mod.rs
+pub struct Clocks;
+impl Clocks {
+    pub(crate) fn new() -> Self { Self }
+}

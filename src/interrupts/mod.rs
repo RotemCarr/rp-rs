@@ -235,3 +235,8 @@ pub unsafe fn nvic_enable(irq: Interrupt) {
     let iser = PPB_BASE_SECURE + NVIC_ISER0 + 4 * (irq_num / 32);
     core::ptr::write_volatile(register(iser), 1usize << (irq_num % 32));
 }
+
+pub struct Interrupts;
+impl Interrupts {
+    pub(crate) fn new() -> Self { Self }
+}

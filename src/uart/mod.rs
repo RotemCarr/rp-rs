@@ -234,3 +234,8 @@ mod tests {
         puts("\r\n");
     }
 }
+
+pub struct Uart0;
+impl Uart0 {
+    pub(crate) fn new() -> Self { Self }
+}

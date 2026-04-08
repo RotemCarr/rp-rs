@@ -46,3 +46,8 @@ pub fn wait_ms(ms: u32) {
         }
     }
 }
+
+pub struct Timers;
+impl Timers {
+    pub(crate) fn new() -> Self { Self }
+}
