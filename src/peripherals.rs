@@ -17,6 +17,8 @@ pub struct Peripherals {
 static TAKEN: AtomicBool = AtomicBool::new(false);
 
 impl Peripherals {
+    /// try to get an instance of board peripherals
+    /// return none if peripherals are already owned
     pub fn take() -> Option<Self> {
         if TAKEN.swap(true, Ordering::AcqRel) {
             None
@@ -24,7 +26,12 @@ impl Peripherals {
             Some(unsafe { Self::steal() })
         }
     }
-
+    
+    /// steal an instance of board peripherals
+    /// 
+    /// # Safety
+    /// 
+    /// this function takes ownership of board peripheral forcefully.
     pub unsafe fn steal() -> Self {
         Self {
             gpio: Gpio::new(),
