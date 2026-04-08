@@ -2,14 +2,14 @@
 #![no_main]
 
 #![feature(custom_test_frameworks)]
-#![test_runner(pico_os::test_runner)]
+#![test_runner(rp_rs::test_runner)]
 
 use cortex_m_rt::entry;
 
-use pico_os::{init, interrupts, println, uart};
-use pico_os::gpio::Pin;
-use pico_os::interrupts::{nvic_enable, Interrupt};
-use pico_os::timers::wait_ms;
+use rp_rs::{init, interrupts, println, uart};
+use rp_rs::gpio::Pin;
+use rp_rs::interrupts::{nvic_enable, Interrupt};
+use rp_rs::timers::wait_ms;
 
 
 /// Custom UART interrupt handler for RX_IRQ
