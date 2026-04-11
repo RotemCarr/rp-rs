@@ -2,23 +2,41 @@
 pub mod regs;
 
 use crate::gpio::regs::*;
-use crate::{bit, reg_read, reg_write, Valid, ATOMIC_CLEAR, ATOMIC_SET, RESETS_RESET, RESETS_RESET_DONE};
+use crate::hardware::{RegisterBlock, Reset, resets};
+use crate::Valid;
 
 // -------- helpers ----------
-/// GPIO control register offset
+
+/// GPIO control register offset within IO_BANK0.
 ///
 /// `pin`: the GPIO number
 #[inline(always)]
 pub const fn gpio_ctrl_offset(pin: usize) -> usize { 0x4 + pin * 0x8 }
 
-/// GPIO pad register offset
+/// Pad register offset within PADS_BANK0.
 ///
 /// `pin`: the GPIO number
 #[inline(always)]
 pub const fn gpio_pad_offset(pin: usize) -> usize { 0x4 + pin * 0x4 }
 
+// One RegisterBlock per peripheral bank touched by GPIO.
+struct IoBankRegs;
+struct PadsRegs;
+struct SioRegs;
+
+impl IoBankRegs  { fn take() -> RegisterBlock { RegisterBlock::new(IO_BANK0_BASE)    } }
+impl PadsRegs    { fn take() -> RegisterBlock { RegisterBlock::new(PADS_BANK0_BASE)  } }
+impl SioRegs     { fn take() -> RegisterBlock { RegisterBlock::new(SIO_BASE)         } }
+
+// IO_BANK0 and PADS_BANK0 need to be unreset before any GPIO can be used.
+struct IoBankPeripheral;
+struct PadsBankPeripheral;
+
+impl Reset for IoBankPeripheral   { const RESET_BIT: usize = resets::RESET_BIT_IO_BANK0;   }
+impl Reset for PadsBankPeripheral { const RESET_BIT: usize = resets::RESET_BIT_PADS_BANK0; }
+
 pub struct Pin<const N: usize>(core::marker::PhantomData<()>)
-where 
+where
     Pin<N>: Valid;
 
 impl<const N: usize> Pin<N>
@@ -29,38 +47,41 @@ impl<const N: usize> Pin<N>
 where
     Pin<N>: Valid {
     pub fn take() -> Self {
-        // Reset IO_BANK0 + PADS
-        reg_write(RESETS_RESET + ATOMIC_CLEAR, bit(6) | bit(9));
-        while (reg_read(RESETS_RESET_DONE) & (bit(6) | bit(9))) != (bit(6) | bit(9)) {}
+        unsafe {
+            // Release IO_BANK0 + PADS_BANK0 from reset
+            IoBankPeripheral.unreset_wait();
+            PadsBankPeripheral.unreset_wait();
 
-        // Configure GPIO_N for SIO (funcsel = 5)
-        reg_write(IO_BANK0_BASE + ((0x08 * N) + 0x04) + ATOMIC_CLEAR, 0x1f);
-        reg_write(IO_BANK0_BASE + ((0x08 * N) + 0x04) + ATOMIC_SET, 0x05);
+            let io = IoBankRegs::take();
+            let pads = PadsRegs::take();
+            let sio = SioRegs::take();
 
-        // Enable GPIO25 output
-        reg_write(SIO_GPIO_OE_SET, bit(N));
+            // Configure pin for SIO (funcsel = 5)
+            io.clear_bits(gpio_ctrl_offset(N), 0x1f);
+            io.set_bits(gpio_ctrl_offset(N), 0x05);
 
-        // Clear input disable + pull up/down
-        reg_write(
-            PADS_BANK0_BASE + ((0x04 * N) + 0x04) + ATOMIC_CLEAR,
-            bit(7) | bit(8),
-        );
+            // Enable output
+            sio.write(SIO_GPIO_OE_SET_OFFSET, 1u32 << N);
+
+            // Clear input-disable + pull up/down on pad
+            pads.clear_bits(gpio_pad_offset(N), (1 << 7) | (1 << 8));
+        }
         Self(core::marker::PhantomData)
     }
 
-    /// Set the pin high
+    /// Set the pin high.
     pub fn set(&self) {
-        reg_write(SIO_GPIO_OUT_SET, bit(N));
+        unsafe { SioRegs::take().write(SIO_GPIO_OUT_SET_OFFSET, 1u32 << N) }
     }
 
-    /// Set the pin low
+    /// Set the pin low.
     pub fn clear(&self) {
-        reg_write(SIO_GPIO_OUT_CLR, bit(N));
+        unsafe { SioRegs::take().write(SIO_GPIO_OUT_CLR_OFFSET, 1u32 << N) }
     }
 
-    /// Toggle the pin
+    /// Toggle the pin.
     pub fn toggle(&self) {
-        reg_write(SIO_GPIO_OUT_XOR, bit(N));
+        unsafe { SioRegs::take().write(SIO_GPIO_OUT_XOR_OFFSET, 1u32 << N) }
     }
 
     pub fn value(&self) -> u32 {
@@ -84,3 +105,8 @@ impl_pin_valid!(
     32, 33, 34, 35, 36, 37, 38, 39,
     40, 41, 42, 43, 44, 45, 46, 47
 );
+
+pub struct Gpio;
+impl Gpio {
+    pub(crate) fn new() -> Self { Self }
+}

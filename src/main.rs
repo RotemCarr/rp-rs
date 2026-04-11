@@ -26,6 +26,9 @@ fn on_uart_rx() {
 fn main() -> ! {
     unsafe {
         init();
+        let _p = rp_rs::peripherals::Peripherals::take().unwrap();
+        
+        init();
         uart::uart_init(115200);
 
         let led = Pin::<25>::take();
