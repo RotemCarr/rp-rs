@@ -1,13 +1,15 @@
 //! Register addresses for the Timers module
 
-// Timer0 Control Registers
-pub const TIMER0_BASE:     usize = 0x400b0000;
-pub const TIMER0_TIMEHR:   usize = TIMER0_BASE + 0x08;
-pub const TIMER0_TIMELR:   usize = TIMER0_BASE + 0x0c;
-pub const TIMER0_TIMERAWH: usize = TIMER0_BASE + 0x24;
-pub const TIMER0_TIMERAWL: usize = TIMER0_BASE + 0x28;
+// Peripheral base addresses — passed to RegisterBlock::new()
+pub const TIMER0_BASE: usize = 0x400b0000;
+pub const TICKS_BASE:  usize = 0x40108000;
 
-// Ticks Control Registers
-pub const TICKS_BASE:          usize = 0x40108000;
-pub const TICKS_TIMER0_CTRL:   usize = TICKS_BASE + 0x18;
-pub const TICKS_TIMER0_CYCLES: usize = TICKS_BASE + 0x1c;
+// TIMER0 register offsets within TIMER0_BASE
+pub const TIMER0_TIMEHR_OFFSET:   usize = 0x08;  // latched high word (latches on TIMELR read)
+pub const TIMER0_TIMELR_OFFSET:   usize = 0x0c;  // latching low word
+pub const TIMER0_TIMERAWH_OFFSET: usize = 0x24;  // free-running high word
+pub const TIMER0_TIMERAWL_OFFSET: usize = 0x28;  // free-running low word
+
+// Ticks register offsets within TICKS_BASE
+pub const TICKS_TIMER0_CTRL_OFFSET:   usize = 0x18;
+pub const TICKS_TIMER0_CYCLES_OFFSET: usize = 0x1c;
