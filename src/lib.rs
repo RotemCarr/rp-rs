@@ -4,6 +4,7 @@
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
+pub mod hardware;
 pub mod spinlocks;
 pub mod clocks;
 pub mod timers;
@@ -27,12 +28,6 @@ use cortex_m_rt::entry;
 pub const ATOMIC_XOR: usize = 0x1000;
 pub const ATOMIC_SET: usize = 0x2000;
 pub const ATOMIC_CLEAR: usize = 0x3000;
-
-// Reset registers
-pub const RESETS_BASE:       usize = 0x4002_0000;
-pub const RESETS_RESET:      usize = RESETS_BASE;
-pub const RESETS_RESET_DONE: usize = RESETS_BASE + 0x8;
-
 
 // ---------- Helpers ----------
 
@@ -125,10 +120,18 @@ macro_rules! println {
 }
 
 
-/// Resets the IO banks and pads
+/// Releases IO_BANK0 and PADS_BANK0 from reset (required before any GPIO use).
 pub fn reset_peripherals() {
-    reg_write(RESETS_RESET + ATOMIC_CLEAR, bit(6) | bit(9));
-    while (reg_read(RESETS_RESET_DONE) & (bit(6) | bit(9))) != (bit(6) | bit(9)) {}
+    use hardware::{RegisterBlock, RESETS_BASE, RESETS_RESET_OFFSET, RESETS_RESET_DONE_OFFSET};
+    use hardware::resets::{RESET_BIT_IO_BANK0, RESET_BIT_PADS_BANK0};
+    let resets = RegisterBlock::new(RESETS_BASE);
+    let mask = (1u32 << RESET_BIT_IO_BANK0) | (1u32 << RESET_BIT_PADS_BANK0);
+    unsafe {
+        resets.clear_bits(RESETS_RESET_OFFSET, mask);
+        while resets.read(RESETS_RESET_DONE_OFFSET) & mask != mask {
+            core::hint::spin_loop();
+        }
+    }
 }
 
 /// Basic panic handler
