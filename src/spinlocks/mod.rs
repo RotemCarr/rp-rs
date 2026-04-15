@@ -2,9 +2,10 @@
 ///
 mod regs;
 
-use crate::{reg_read, reg_write, Valid};
+use crate::hardware::RegisterBlock;
 use crate::gpio::regs::SIO_BASE;
-use crate::spinlocks::regs::*;
+use crate::spinlocks::regs::SPINLOCK_BASE_OFFSET;
+use crate::Valid;
 
 #[derive(Debug)]
 pub struct Spinlock<const N: usize>(core::marker::PhantomData<()>)
@@ -15,7 +16,7 @@ impl<const N: usize> Spinlock<N>
 where
     Spinlock<N>: Valid {}
 
-fn spinlock_offset(spinlock_num: usize) -> usize {
+const fn spinlock_offset(spinlock_num: usize) -> usize {
     SPINLOCK_BASE_OFFSET + spinlock_num * 4
 }
 
@@ -23,24 +24,28 @@ impl<const N: usize> Spinlock<N>
 where
     Spinlock<N>: Valid,
 {
-    /// Try to claim the spinlock
+    fn regs() -> RegisterBlock {
+        RegisterBlock::new(SIO_BASE)
+    }
+
+    /// Try to claim the spinlock.
     pub fn try_claim() -> Option<Self> {
-        let claimed: usize = reg_read(SIO_BASE + spinlock_offset(N));
+        let claimed = unsafe { Self::regs().read(spinlock_offset(N)) };
         if claimed > 0 {
             Some(Self(core::marker::PhantomData))
         } else {
             None
         }
     }
-    
-    /// Releases the spinlock
-    /// 
+
+    /// Releases the spinlock.
+    ///
     /// # Safety
-    /// 
-    /// caller should not release the lock if they don't own it to begin with.
-    /// this would lead to undefined behaviours and race conditions
+    ///
+    /// Caller should not release the lock if they don't own it — doing so
+    /// would lead to undefined behavior and race conditions.
     pub unsafe fn release() {
-        reg_write(SIO_BASE + spinlock_offset(N), 1);
+        Self::regs().write(spinlock_offset(N), 1);
     }
 }
 
@@ -48,7 +53,7 @@ impl<const N: usize> Drop for Spinlock<N>
 where
     Spinlock<N>: Valid
 {
-    /// Release the lock if it goes out of scope
+    /// Release the lock when it goes out of scope.
     fn drop(&mut self) {
         unsafe { Self::release() }
     }

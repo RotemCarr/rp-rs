@@ -1,236 +1,171 @@
-//! Uart module
+//! UART module
 
 mod regs;
 pub mod interrupts;
 
-use crate::clocks::{clock_get_hz};
+use crate::clocks::clock_get_hz;
 use crate::gpio::{gpio_ctrl_offset, gpio_pad_offset};
-use crate::{register, ATOMIC_CLEAR};
-use regs::*;
+use crate::hardware::{RegisterBlock, Reset, RESETS_BASE, resets};
 use crate::clocks::Clock::Ref;
+use regs::*;
 
 // -------- helpers ----------
 
-/// Returns the expected values for IBRD and FBRD given the peripheral clock frequency
-///
-/// `clk_peri_hz`: the peripheral clock frequency in Hz
-/// `baud`: the UART baudrate
+/// Returns the IBRD and FBRD divisors for the given peripheral clock and baud rate.
 #[inline(always)]
-fn baud_divisors(clk_peri_hz: usize, baud: usize) -> (usize, usize) {
-    // baud_rate_div = (8*clk)/baud + 1
+fn baud_divisors(clk_peri_hz: usize, baud: usize) -> (u32, u32) {
     let brd = (8u64 * clk_peri_hz as u64) / baud as u64 + 1;
-    let mut ibrd = (brd >> 7) as usize;
-    let mut fbrd = ((brd as usize) & 0x7F) >> 1;
+    let mut ibrd = (brd >> 7) as u32;
+    let mut fbrd = ((brd as u32) & 0x7F) >> 1;
     if ibrd == 0 { ibrd = 1; fbrd = 0; }
     if ibrd >= 65535 { ibrd = 65535; fbrd = 0; }
     (ibrd, fbrd)
 }
 
-/// Return the current clk_peri in Hz (assumes AUXSRC = XOSC and DIV INT field)
+/// Return the current clk_peri in Hz (assumes AUXSRC = XOSC).
 fn get_clk_peri_hz() -> usize {
+    let clocks = RegisterBlock::new(CLOCKS_BASE);
     unsafe {
-        let ctrl = core::ptr::read_volatile(register(CLOCKS_BASE + CLK_PERI_CTRL_OFFSET));
-        let enabled = (ctrl >> 28) & 1; // ENABLED (read-only)
+        let ctrl    = clocks.read(CLK_PERI_CTRL_OFFSET);
+        let enabled = (ctrl >> 28) & 1;
         if enabled == 0 { return 0; }
-        let auxsrc = (ctrl >> 5) & 0x7; // AUXSRC
-
-        // set AUXSRC to XOSC (0x4), 12 MHz:
-        let base = if auxsrc == 0x4 { clock_get_hz(Ref) } else { 0 }; // known path
-        let div = core::ptr::read_volatile(register(CLOCKS_BASE + CLK_PERI_DIV_OFFSET));
-        let int_div = (div >> 16) & 0x3; // INT bits [17:16]
-        let int_div = if int_div == 0 { 1 } else { int_div }; // 0 means max+1; we won’t use it
+        let auxsrc = (ctrl >> 5) & 0x7;
+        let base = if auxsrc == 0x4 { clock_get_hz(Ref) } else { 0 };
+        let div     = clocks.read(CLK_PERI_DIV_OFFSET);
+        let int_div = ((div >> 16) & 0x3) as usize;
+        let int_div = if int_div == 0 { 1 } else { int_div };
         base / int_div
     }
 }
 
-/// Initializes the UART controller with default UART0 GPIOs
+/// UART0 peripheral; implements ResetPeripheral so uart_init can use it.
+struct Uart0Periph;
+impl Reset for Uart0Periph {
+    const RESET_BIT: usize = resets::RESET_BIT_UART0;
+}
+
+/// Initialize UART0 with default GPIOs (GPIO0 = TX, GPIO1 = RX).
 ///
 /// # Safety
 ///
-/// the caller must ensure that the system clocks are initialized
-/// `baud`: the baudrate value to sync UART
+/// The caller must ensure system clocks are initialized before calling.
 pub unsafe fn uart_init(baud: usize) {
-    // 1) clk_peri: AUXSRC = XOSC (0x4), DIV = 1, ENABLE = 1
-    let clk_ctrl = register(CLOCKS_BASE + CLK_PERI_CTRL_OFFSET);
-    let clk_div  = register(CLOCKS_BASE + CLK_PERI_DIV_OFFSET);
+    let clocks   = RegisterBlock::new(CLOCKS_BASE);
+    let resets   = RegisterBlock::new(RESETS_BASE);
+    let io_bank0 = RegisterBlock::new(IO_BANK0_BASE);
+    let pads     = RegisterBlock::new(PADS_BANK0_BASE);
+    let uart0    = RegisterBlock::new(UART0_BASE);
 
-    // Clean stop
-    let mut ctrl = core::ptr::read_volatile(clk_ctrl);
-    ctrl &= !(1 << 11);                  // ENABLE = 0
-    core::ptr::write_volatile(clk_ctrl, ctrl);
-
-    // Divider = 1 (INT=1 at bits [17:16])
-    // (RESET says INT default is 0x1 already)
-    let div_val = 1usize << 16;
-    core::ptr::write_volatile(clk_div, div_val);
-
-    // AUXSRC = 0x4 (XOSC_CLKSRC), ENABLE=1
-    ctrl &= !(0x7 << 5);
-    ctrl |= 0x4 << 5; // XOSC
-    ctrl |= 1 << 11;  // ENABLE
-    core::ptr::write_volatile(clk_ctrl, ctrl);
-    // (ENABLED RO bit lives at 28)
+    // 1) Configure clk_peri: AUXSRC = XOSC (0x4), DIV = 1, ENABLE = 1
+    clocks.modify_clear(CLK_PERI_CTRL_OFFSET, 1 << 11);            // ENABLE = 0
+    clocks.write(CLK_PERI_DIV_OFFSET, 1 << 16);                    // INT = 1
+    clocks.modify(CLK_PERI_CTRL_OFFSET, 0x7 << 5, 0x4 << 5);      // AUXSRC = XOSC
+    clocks.set_bits(CLK_PERI_CTRL_OFFSET, 1 << 11);                // ENABLE = 1
 
     // 2) Release UART0 from reset
-    let resets_clr = register(RESETS_BASE + RESETS_RESET_OFFSET + ATOMIC_CLEAR);
-    core::ptr::write_volatile(resets_clr, RESET_UART0_BIT);
-    let reset_done = register(RESETS_BASE + RESETS_RESET_DONE_OFFSET);
-    while (core::ptr::read_volatile(reset_done) & RESET_UART0_BIT) == 0 {}
+    let _ = resets; // used via ResetPeripheral
+    Uart0Periph.unreset_wait();
 
-    // 3) IO mux: GPIO0 = UART0_RX, GPIO1 = UART0_TX
-    // FUNCSEL = 0x2 for both pins, per IO_BANK0 tables
-    let gpio0_ctrl = register(IO_BANK0_BASE + gpio_ctrl_offset(0));
-    let mut v0 = core::ptr::read_volatile(gpio0_ctrl);
-    v0 = (v0 & !0x1F) | 0x02; // FUNCSEL 0x2 = UART0_TX
-    core::ptr::write_volatile(gpio0_ctrl, v0);
+    // 3) IO mux: GPIO0 = UART0_TX, GPIO1 = UART0_RX (FUNCSEL = 0x2)
+    io_bank0.modify(gpio_ctrl_offset(0), 0x1F, 0x02);
+    io_bank0.modify(gpio_ctrl_offset(1), 0x1F, 0x02);
 
-    let gpio1_ctrl = register(IO_BANK0_BASE + gpio_ctrl_offset(1));
-    let mut v1 = core::ptr::read_volatile(gpio1_ctrl);
-    v1 = (v1 & !0x1F) | 0x02; // FUNCSEL 0x2 = UART0_RX
-    core::ptr::write_volatile(gpio1_ctrl, v1);
+    // 4) Pad config: TX (GPIO0) — no pulls; RX (GPIO1) — input enable + pull-up
+    pads.modify_clear(gpio_pad_offset(0), PADS_IO_PUE | PADS_IO_PDE | PADS_IO_ISO);
+    pads.modify_set(gpio_pad_offset(1),   PADS_IO_IE | PADS_IO_PUE);
+    pads.modify_clear(gpio_pad_offset(1), PADS_IO_PDE | PADS_IO_ISO);
 
-    // Pads: RX (GPIO0) needs IE + PUE; TX (GPIO1) no pulls, output enabled (OD=0), de-isolate
-    // TX pin (GPIO0) - output, no pulls
-    let gpio0_pad = register(PADS_BANK0_BASE + gpio_pad_offset(0));
-    let mut p0 = core::ptr::read_volatile(gpio0_pad);
-    p0 &= !(PADS_IO_PUE | PADS_IO_PDE | PADS_IO_ISO);
-    core::ptr::write_volatile(gpio0_pad, p0);
+    // 5) UART registers
+    uart0.write(UARTCR_OFFSET,   0);                    // disable while configuring
+    uart0.write(UARTICR_OFFSET,  0x7FF);                // clear all interrupts/errors
+    uart0.write(UARTIFLS_OFFSET, (0b011 << 3) | 0b011); // FIFO trigger ~1/2
+    uart0.write(UARTIMSC_OFFSET, 0);                    // mask all interrupts
 
-    // RX pin (GPIO1) - input + pull-up
-    let gpio1_pad = register(PADS_BANK0_BASE + gpio_pad_offset(1));
-    let mut p1 = core::ptr::read_volatile(gpio1_pad);
-    p1 |= PADS_IO_IE | PADS_IO_PUE;
-    p1 &= !(PADS_IO_PDE | PADS_IO_ISO);
-    core::ptr::write_volatile(gpio1_pad, p1);
-
-    // 4) UART registers
-    // Disable while configuring
-    core::ptr::write_volatile(register(UART0_BASE + UARTCR_OFFSET), 0);
-
-    // Clear all interrupts/errors
-    core::ptr::write_volatile(register(UART0_BASE + UARTICR_OFFSET), 0x7FF);
-
-    // Choose FIFO trigger levels ~1/2
-    // RXIFLSEL [5:3], TXIFLSEL [2:0]: 0b010 = 1/4, 0b011 = 1/2.
-    let ifls = (0b011 << 3) | 0b011;
-    core::ptr::write_volatile(register(UART0_BASE + UARTIFLS_OFFSET), ifls);
-
-    // Mask all interrupts
-    core::ptr::write_volatile(register(UART0_BASE + UARTIMSC_OFFSET), 0);
-
-    // Compute divisors for 115200 using the actual clk_peri we just set
-    let clk_peri = get_clk_peri_hz(); // should be 12_000_000
+    let clk_peri = get_clk_peri_hz();
     let (ibrd, fbrd) = baud_divisors(clk_peri, baud);
-    core::ptr::write_volatile(register(UART0_BASE + UARTIBRD_OFFSET), ibrd & 0xFFFF);
-    core::ptr::write_volatile(register(UART0_BASE + UARTFBRD_OFFSET), fbrd & 0x3F);
+    uart0.write(UARTIBRD_OFFSET, ibrd & 0xFFFF);
+    uart0.write(UARTFBRD_OFFSET, fbrd & 0x3F);
 
     // Latch divisors by writing LCR_H (any write latches IBRD/FBRD)
-    let lcr_h_val = UARTLCR_H_WLEN_8 | UARTLCR_H_FEN; // 8N1 + FIFO
-    // (Write a dummy first to ensure latch, matching SDK behavior)
-    let lcr_save = core::ptr::read_volatile(register(UART0_BASE + UARTLCR_H_OFFSET));
-    core::ptr::write_volatile(register(UART0_BASE + UARTLCR_H_OFFSET), lcr_save);
-    // Now set desired format
-    core::ptr::write_volatile(register(UART0_BASE + UARTLCR_H_OFFSET), lcr_h_val);
+    let lcr_save = uart0.read(UARTLCR_H_OFFSET);
+    uart0.write(UARTLCR_H_OFFSET, lcr_save);
+    uart0.write(UARTLCR_H_OFFSET, UARTLCR_H_WLEN_8 | UARTLCR_H_FEN); // 8N1 + FIFO
 
-    // DMA off
-    core::ptr::write_volatile(register(UART0_BASE + UARTDMACR_OFFSET), 0);
-
-    // Enable UART, TX, RX
-    core::ptr::write_volatile(
-        register(UART0_BASE + UARTCR_OFFSET),
-        UARTCR_UARTEN | UARTCR_TXE | UARTCR_RXE,
-    );
+    uart0.write(UARTDMACR_OFFSET, 0);  // DMA off
+    uart0.write(UARTCR_OFFSET, UARTCR_UARTEN | UARTCR_TXE | UARTCR_RXE); // enable
 }
 
-/// Blocking putc
-///
-/// `b`: byte to write to the uart buffer
+/// Blocking byte write.
 pub fn putc(b: u8) {
+    let uart0 = RegisterBlock::new(UART0_BASE);
     unsafe {
-        while (core::ptr::read_volatile(register(UART0_BASE + UARTFR_OFFSET)) & UARTFR_TXFF) != 0 {}
-        core::ptr::write_volatile(register(UART0_BASE + UARTDR_OFFSET), b as usize);
+        while uart0.read(UARTFR_OFFSET) & UARTFR_TXFF != 0 {}
+        uart0.write(UARTDR_OFFSET, b as u32);
     }
 }
 
-/// Blocking puts
-///
-/// `s`: string to write to the uart buffer
+/// Blocking string write.
 pub fn puts(s: &str) {
     for &b in s.as_bytes() {
         putc(b);
     }
 }
 
-/// Blocking get_char: waits until a character is available, then returns it
+/// Blocking character read — waits until a byte arrives.
 pub fn getc() -> char {
+    let uart0 = RegisterBlock::new(UART0_BASE);
     unsafe {
-        // 1. Wait until the receive FIFO is not empty (RXFE == 0).
-        while (core::ptr::read_volatile(register(UART0_BASE + UARTFR_OFFSET)) & UARTFR_RXFE) != 0 {
-            // Busy-wait: do nothing until a character arrives.
-        }
-
-        // 2. Read the data register to get the received byte.
-        // Bits [7:0] of UARTDR hold the character data.
-        let data = core::ptr::read_volatile(register(UART0_BASE + UARTDR_OFFSET));
-        // 3. Return the lowest 8 bits as the character (ignore any error flags in upper bits).
-        (data as u8) as char
+        while uart0.read(UARTFR_OFFSET) & UARTFR_RXFE != 0 {}
+        (uart0.read(UARTDR_OFFSET) as u8) as char
     }
 }
 
-/// Non-blocking get_char: returns `Option<u8>`
-/// - Some(byte) if a character is ready
-/// - None if FIFO empty
+/// Non-blocking character read — returns `None` if the FIFO is empty.
 pub fn getc_nonblocking() -> Option<u8> {
+    let uart0 = RegisterBlock::new(UART0_BASE);
     unsafe {
-        let fr = core::ptr::read_volatile(register(UART0_BASE + UARTFR_OFFSET));
-        if (fr & UARTFR_RXFE) != 0 {
+        if uart0.read(UARTFR_OFFSET) & UARTFR_RXFE != 0 {
             None
         } else {
-            let data = core::ptr::read_volatile(register(UART0_BASE + UARTDR_OFFSET));
-            Some((data & 0xFF) as u8)  // strip error bits
+            Some((uart0.read(UARTDR_OFFSET) & 0xFF) as u8)
         }
     }
 }
 
-/// Flushes the UART Receive FIFO
+/// Flush the UART transmit FIFO.
 ///
 /// # Safety
 ///
-/// This function drops all pending data on the FIFO
+/// Drops all pending TX data.
 pub unsafe fn uart_flush() {
-    // Wait until TX FIFO is empty
-    while (core::ptr::read_volatile(register(UART0_BASE + UARTFR_OFFSET)) & (1 << 3)) != 0 {}
+    let uart0 = RegisterBlock::new(UART0_BASE);
+    while uart0.read(UARTFR_OFFSET) & (1 << 3) != 0 {}
 }
 
-/// Enable or disable the UART FIFO (RX/TX FIFOs).
-///
-/// `enabled = true`: enables FIFO mode (default in uart_init)
-/// `enabled = false`: disables FIFO (for character-by-character interrupts)
+/// Enable or disable UART FIFOs.
 pub fn uart_enable_fifo(enabled: bool) {
-    let lcr_h_addr = (UART0_BASE + UARTLCR_H_OFFSET) as *mut usize;
+    let uart0 = RegisterBlock::new(UART0_BASE);
     unsafe {
-        let mut lcr_h_val = core::ptr::read_volatile(lcr_h_addr);
-
         if enabled {
-            lcr_h_val |= UARTLCR_H_FEN;  // set bit
+            uart0.modify_set(UARTLCR_H_OFFSET, UARTLCR_H_FEN);
         } else {
-            lcr_h_val &= !UARTLCR_H_FEN; // clear bit
+            uart0.modify_clear(UARTLCR_H_OFFSET, UARTLCR_H_FEN);
         }
-
-        core::ptr::write_volatile(lcr_h_addr, lcr_h_val);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::putc;
-    use super::puts;
-    
+    use super::{putc, puts};
+
     #[test_case]
     fn test_uart_put_char() {
         putc(b'A');
-
-        // Teardown
         puts("\r\n");
     }
+}
+
+pub struct Uart0;
+impl Uart0 {
+    pub(crate) fn new() -> Self { Self }
 }
