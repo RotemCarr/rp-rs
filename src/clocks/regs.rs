@@ -16,6 +16,7 @@ pub const PLL_SYS_PRIM:      usize = PLL_SYS_BASE + 0x0c;
 // Clocks Configuration Registers
 pub const CLOCKS_BASE:             usize = 0x40010000;
 pub const CLOCKS_CLK_REF_CTRL:     usize = CLOCKS_BASE + 0x30;
+pub const CLOCKS_CLK_REF_DIV: usize = CLOCKS_BASE + 0x34;
 pub const CLOCKS_CLK_REF_SELECTED: usize = CLOCKS_BASE + 0x38;
 pub const CLOCKS_CLK_SYS_CTRL:     usize = CLOCKS_BASE + 0x3c;
 pub const CLOCKS_CLK_SYS_SELECTED: usize = CLOCKS_BASE + 0x44;
