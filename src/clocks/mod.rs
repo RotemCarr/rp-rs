@@ -54,6 +54,9 @@ pub fn pll_sys_out_hz() -> usize {
 ///
 /// The caller must ensure the reference clock isn't already initialized
 pub unsafe fn configure_clk_ref() {
+    // Select clock reference divider to be 1
+    reg_write(CLOCKS_CLK_REF_DIV, 0x10000);
+
     // Select XOSC as the reference source
     reg_write(
         CLOCKS_CLK_REF_CTRL,
